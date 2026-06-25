@@ -1,0 +1,5 @@
+{
+  "name": "Smart Solver AI",
+  "description": "A professional AI-powered educational assistant for students and educators.",
+  "requestFramePermissions": ["microphone"]
+}
