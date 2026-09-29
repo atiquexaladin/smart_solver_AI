@@ -10,6 +10,8 @@ import { GoogleGenAI } from "@google/genai";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import { Server as SocketIOServer } from "socket.io";
+import { MongoMemoryServer } from "mongodb-memory-server";
+import { mkdir } from "fs/promises";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -18,7 +20,8 @@ const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017";
 const DB_NAME = "smart_solver";
 let db: Db;
 
-const mongoClient = new MongoClient(MONGODB_URI);
+let mongoClient = new MongoClient(MONGODB_URI);
+let memoryMongo: MongoMemoryServer | undefined;
 
 type UserRole = "admin" | "student";
 type JwtPayload = { id: string; email: string; name: string; role: UserRole };
@@ -27,21 +30,41 @@ type RoomJwtPayload = { purpose: "live_room"; classId: string; userId: string; r
 async function initializeDB() {
   try {
     await mongoClient.connect();
-    db = mongoClient.db(DB_NAME);
-    
-    
-    await db.collection("users").createIndex({ email: 1 }, { unique: true });
-    await db.collection("sessions").createIndex({ user_id: 1, created_at: -1 });
-    await db.collection("messages").createIndex({ session_id: 1, timestamp: 1 });
-    await db.collection("live_classes").createIndex({ meetingId: 1 }, { unique: true });
-    await db.collection("live_classes").createIndex({ joinSlug: 1 }, { unique: true });
-    await db.collection("live_classes").createIndex({ startAt: 1 });
-    
-    console.log("✓ MongoDB connected and initialized");
   } catch (err) {
-    console.error("MongoDB connection error:", err);
-    process.exit(1);
+    if (process.env.NODE_ENV === "production") {
+      console.error("MongoDB connection error:", err);
+      throw err;
+    }
+
+    console.warn("Configured MongoDB is unavailable; starting local development database.");
+    await mongoClient.close();
+    const localMongoPath = path.join(__dirname, ".mongo-data");
+    await mkdir(localMongoPath, { recursive: true });
+    try {
+      memoryMongo = await MongoMemoryServer.create({
+        instance: { dbPath: localMongoPath },
+      });
+    } catch {
+      const isolatedMongoPath = `${localMongoPath}-${process.pid}`;
+      console.warn("Local development database is already in use; starting an isolated instance.");
+      await mkdir(isolatedMongoPath, { recursive: true });
+      memoryMongo = await MongoMemoryServer.create({
+        instance: { dbPath: isolatedMongoPath },
+      });
+    }
+    mongoClient = new MongoClient(memoryMongo.getUri());
+    await mongoClient.connect();
   }
+
+  db = mongoClient.db(DB_NAME);
+  await db.collection("users").createIndex({ email: 1 }, { unique: true });
+  await db.collection("sessions").createIndex({ user_id: 1, created_at: -1 });
+  await db.collection("messages").createIndex({ session_id: 1, timestamp: 1 });
+  await db.collection("live_classes").createIndex({ meetingId: 1 }, { unique: true });
+  await db.collection("live_classes").createIndex({ joinSlug: 1 }, { unique: true });
+  await db.collection("live_classes").createIndex({ startAt: 1 });
+
+  console.log("MongoDB connected and initialized");
 }
 
 const app = express();
@@ -823,7 +846,7 @@ app.post('/api/generate', authenticate, async (req, res) => {
       }
     }
 
-    res.json({ text, ...response });
+    res.json({ ...response, text });
   } catch (err) {
     console.error('[/api/generate] Exception:', err);
     res.status(500).json({ error: 'AI generate failed', details: String(err) });

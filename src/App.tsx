@@ -665,7 +665,7 @@ export default function App() {
         console.log('[searchPDFs] AI Response:', rawText.substring(0, 300));
         
         // Parse markdown links [Title](URL)
-        const markdownLinks = Array.from(rawText.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g));
+        const markdownLinks = Array.from<RegExpMatchArray>(rawText.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g));
         
         if (markdownLinks.length > 0) {
           const foundResources = markdownLinks.map(m => ({
