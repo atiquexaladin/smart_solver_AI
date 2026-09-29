@@ -42,14 +42,14 @@ async function initializeDB() {
     await mkdir(localMongoPath, { recursive: true });
     try {
       memoryMongo = await MongoMemoryServer.create({
-        instance: { dbPath: localMongoPath },
+        instance: { dbPath: localMongoPath, port: 27017, portGeneration: false },
       });
     } catch {
       const isolatedMongoPath = `${localMongoPath}-${process.pid}`;
       console.warn("Local development database is already in use; starting an isolated instance.");
       await mkdir(isolatedMongoPath, { recursive: true });
       memoryMongo = await MongoMemoryServer.create({
-        instance: { dbPath: isolatedMongoPath },
+        instance: { dbPath: isolatedMongoPath, port: 27017, portGeneration: false },
       });
     }
     mongoClient = new MongoClient(memoryMongo.getUri());
